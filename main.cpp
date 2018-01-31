@@ -20,20 +20,66 @@ Colour red() { return Colour(1.0f, 0.0f, 0.0f); }
 Colour white() { return Colour(1.0f, 1.0f, 1.0f); }
 Colour black() { return Colour(0.0f, 0.0f, 0.0f); }
 
-///Returns true if the given ray intersects with a sphere at point ems from camera with radius r, false otherwise
-bool raySphereIntersect(float disc){
-    if(disc >= 0){  //then ray intersects sphere
-        return true;
-    }
-    return false;
-}
+///Class Surface used for all objects, members = position, ambient/diffuse/specular lighting coefficients, Phong exponent
+class Surface {
+public:
+    Vec3 pos;
+    Colour ambient;
+    Colour diffuse;
+    Colour specular;
+    float phongexp;
+    Surface(Vec3 p,Colour a,Colour d,Colour s,float x) : pos(p), ambient(a), diffuse(d), specular(s), phongexp(x) {}
+};
 
-///Returns true if the given ray from intersects with a plane with point p and normal n, false otherwise
-bool rayPlaneIntersect(float t){
-    if(t >= 0){
-        return true;
+///Class Plane inherits Surface, members = all Surface members plus plane normal
+class Plane : public Surface {
+public:
+    Vec3 normal;
+    float distance;
+    Vec3 intersect;
+    Plane(Vec3 p,Colour a,Colour d,Colour s,float x, Vec3 n) : Surface(p,a,d,s,x), normal(n.normalized()) {}
+    bool intersects(Vec3 ray, Vec3 E) {
+        float d = -1.0f;
+        float denom = ray.dot(normal);  //denominator of ray-plane intersection equation
+        if(denom > 0.00000000001f){     //we can't calculate if denom is zero
+            Vec3 emp = E - pos;         //vector from camera to intersection point
+            d = -emp.dot(normal);
+        }
+        if(d >= 0){
+            distance = d;
+            intersect = E + distance*ray;
+            return true;
+        }
+        return false;
     }
-    return false;
+};
+
+///Class Sphere inherits Surface, members = all Surface members plus sphere radius
+class Sphere : public Surface {
+public:
+    float radius;
+    float distance;
+    Vec3 intersect;
+    Sphere(Vec3 p,Colour a,Colour d,Colour s,float x, float r) : Surface(p,a,d,s,x), radius(r) {}
+    bool intersects(Vec3 ray, Vec3 E){
+        Vec3 ems = E - pos;
+        float disc = std::powf(ray.dot(ems),2) - ems.dot(ems) + radius*radius;
+        if(disc >= 0){
+            distance = -(ray.dot(ems)) - std::sqrtf(disc);   //find distance where ray hits sphere
+            intersect = E + distance*ray;
+            return true;
+        }
+        return false;
+    }
+    Vec3 findNormal(){
+        return (intersect - pos)/radius;
+    }
+
+};
+
+///Returns a ray from a light source to a given position
+Vec3 lightDirection(Vec3 lightpos, Vec3 pos){
+    return lightpos - pos;
 }
 
 ///Computes the ambient light for a pixel based on ambient coefficient of a surface & ambient light intensity
@@ -43,69 +89,78 @@ Colour ambientShading(Colour ka, float ia){
 
 ///Computes the colour of a pixel based on the given ray, normal to surface, vector pointing to light source, and surface/light coefficients/Phong exponent
 Colour phongShading(Vec3 v, Vec3 n, Vec3 l, Colour ka, float ia, Colour kd, float i, Colour ks, float p){
-    ///normalize all vectors
+    ///normalize all vectors just in case
     v = -v;
     v = v.normalized();
     n = n.normalized();
     l = l.normalized();
 
+    ///compute ambient term
     Colour ambient = ambientShading(ka,ia);
 
+    ///compute diffuse term
     Colour diffuse = kd*i*std::fmaxf(l.dot(n),0.0f);
 
+    ///compute specular term
     Vec3 h = (v+l).normalized();
     Colour specular = ks*i*std::powf(std::fmaxf(h.dot(n),0.0f),p);
 
+    ///return complete shade
     return ambient + diffuse + specular;
 }
 
-//Vec3 point = (left->right(x), up->down(y), far->near(z))
-//Vec3 vector = (right(x),up(x),near(x))
+///Vec3 point = (left->right(x), up->down(y), far->near(z))
+///Vec3 vector = (right(x),up(x),near(x))
 int main(int, char**){
 
-    int wResolution = 1080;
-    int hResolution = 720;
-    float aratio = float(wResolution)/float(hResolution);
-    // #rows = hResolution, #cols = wResolution
-    Image<Colour> image(hResolution, wResolution);
+    /// #rows = hResolution, #cols = wResolution
+    int wresolution = 1080;
+    int hresolution = 720;
+    float aratio = float(wresolution)/float(hresolution);
+    Image<Colour> image(hresolution, wresolution);
 
-    ///Camera position definition:
+    ///view bounds:
+    float left = -1.0f*aratio;      //leftmost view plane boundary
+    float right = 1.0f*aratio;      //rightmost
+    float top = 1.0f;               //top
+    float bottom = -1.0f;           //bottom
+    ///without aratio, image will be distorted: our bounds define a square but the image aspect ratio is 4:3
+
+    ///camera position definition:
     Vec3 W = Vec3(0.0f,0.0f,-1.0f); //out direction
     Vec3 V = Vec3(0.0f,1.0f,0.0f);  //up direction
     Vec3 U = Vec3(1.0f,0.0f,0.0f);  //side direction
     float d = 1.0f;                 //focal length
-    Vec3 E = -d*W;
-
-    ///Ambient light intensity:
-    float ambientLight = 0.2f;
-
-    ///Sphere position & material definition:
-    Vec3 spherePos = Vec3(3.0f, 1.0f, -5.0f);   //the intersection equation defines the sphere's boundaries later; we only need pos & radius here
-    float sphereRadius = 3.0f;
-    Colour sphereAmbient = Colour(0.5f,0.5f,0.5f);
-    Colour sphereDiffuse = red();
-    Colour sphereSpecular = white();
-    float spherePhong = 10.0f;
-
-    ///plane position definition:
-    Vec3 floorPos = Vec3(0.0f,-50.0f,0.0f);  //positioned at "floor height"
-    Vec3 floorNormal = Vec3(0.0f,-1.0f,0.0f);  //directed straight up
-    Colour floorAmbient = Colour(0.5f,0.5f,0.5f);
-    Colour floorDiffuse = Colour(0.0f,0.2f,0.0f);
-    Colour floorSpecular = white();
-    float floorPhong = 10.0f;
-
-    ///view bounds:
-    float left = -1.0f*aratio;     //leftmost view plane boundary
-    float right = 1.0f*aratio;     //rightmost
-    float top = 1.0f;       //top
-    float bottom = -1.0f;   //bottom
-    ///without aratio, image will be distorted: our bounds define a square but the image aspect ratio is 4:3
+    Vec3 E = -d*W;                  //camera position
 
     ///light source & intensity:
-    Vec3 lightPos = Vec3(0.0f, 0.0f, 0.0f);
-    float lightIntensity = 1.0f;
+    Vec3 lightpos = Vec3(0.0f, 0.0f, 0.0f);
+    float lightintensity = 1.0f;
 
+    ///Ambient light intensity:
+    float ambientlight = 0.5f;
+
+    ///floor position & material definition:
+    Vec3 floorp = Vec3(0.0f,-50.0f,0.0f);
+    Colour floora = Colour(0.5f,0.5f,0.5f);
+    Colour floord = Colour(0.0f,0.2f,0.0f);
+    Colour floors = white();
+    float floorx = 10.0f;
+    Vec3 floorn = Vec3(0.0f,-1.0f,0.0f);
+    ///floor construction:
+    Plane floor(floorp,floora,floord,floors,floorx,floorn);
+
+    ///sphere1 position & material definition:
+    Vec3 sphere1p = Vec3(3.0f, 1.0f, -5.0f);
+    Colour sphere1a = Colour(0.5f,0.5f,0.5f);
+    Colour sphere1d = red();
+    Colour sphere1s = white();
+    float sphere1x = 10.0f;
+    float sphere1r = 3.0f;
+    ///sphere1 construction:
+    Sphere sphere1(sphere1p,sphere1a,sphere1d,sphere1s,sphere1x,sphere1r);
+
+    ///For each row, compute rays, intersections, & shading
     for (int row = 0; row < image.rows(); ++row) {
         for (int col = 0; col < image.cols(); ++col) {
 
@@ -116,33 +171,54 @@ int main(int, char**){
             ///build primary rays
             Vec3 ray = pixel - E;       //coordinate minus camera position; standard vector equation
             ray = ray.normalized();     //unit vector of ray
-            
-            /// ray-sphere intersection
-            Vec3 ems = E - spherePos; //camera position minus sphere position
-            float disc = std::powf(ray.dot(ems),2) - ems.dot(ems) + sphereRadius*sphereRadius; //discriminant: https://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
 
-            ///ray-plane intersection: https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-plane-and-ray-disk-intersection
-            floorNormal = floorNormal.normalized();
-            float denom = ray.dot(floorNormal);              //denominator of ray-plane intersection equation
-            float t = -1;
-            if(denom > 0.00000000001f){                    //we can't calculate if denom is zero
-                Vec3 omp = E - floorPos;               //plane point minus origin pixel
-                t = -omp.dot(floorNormal);
+            /// structure:
+            /// bool hit = false
+            /// for each object in scene from closest to farthest:
+            ///     if ray intersects object:
+            ///         hit = true
+            ///         intersection normal = normal from intersection with object
+            ///         break out of for loop
+            /// if hit:
+            ///     shoot shadow ray at light source
+            ///     if shadow ray hits any object:
+            ///         image(row,col) = ambientShading
+            ///     else:
+            ///         image(row,col) = phongShading
+            /// else:
+            ///     image(row,col) = white();
+
+            bool hit = false;
+            Vec3 normal,lightdir,ambient,diffuse,specular;
+            float phongexp;
+            if(sphere1.intersects(ray,E)){
+                hit = true;
+                normal = sphere1.findNormal();
+                lightdir = lightDirection(lightpos,sphere1.intersect);
+                ambient = sphere1.ambient;
+                diffuse = sphere1.diffuse;
+                specular = sphere1.specular;
+                phongexp = sphere1.phongexp;
+                //image(row,col) = phongShading(ray, normal, lightdir, sphere1.ambient, ambientlight, sphere1.diffuse, lightintensity, sphere1.specular, sphere1.phongexp);
+            }else if(floor.intersects(ray,E)){
+                hit = true;
+                normal = floor.normal;
+                lightdir = lightDirection(floor.intersect,lightpos);   //TODO: this is backwards for some reason (floor.intersect is negative?)
+                ambient = floor.ambient;
+                diffuse = floor.diffuse;
+                specular = floor.specular;
+                phongexp = floor.phongexp;
+                //image(row,col) = phongShading(ray, normal, lightdir, floor.ambient, ambientlight, floor.diffuse, lightintensity, floor.specular, floor.phongexp);
             }
-
-            if(raySphereIntersect(disc)){
-                float d = -(ray.dot(ems)) - std::sqrtf(disc);   //find distance where ray hits sphere
-                Vec3 pos = E + d*ray;                           //find actual position
-                Vec3 sphereNormal = (pos - spherePos)/sphereRadius;   //find normal to sphere at that position
-                Vec3 lightDir = lightPos - pos;
-                image(row,col) = phongShading(ray, sphereNormal, lightDir, sphereAmbient, ambientLight, sphereDiffuse, lightIntensity, sphereSpecular, spherePhong);
-            }else if(rayPlaneIntersect(t)){
-                //find distance, position, & normal to intersection point
-                Vec3 pos = E + t*ray;
-                Vec3 lightDir = pos - lightPos;
-                image(row,col) = phongShading(ray, floorNormal, lightDir, floorAmbient, ambientLight, floorDiffuse, lightIntensity, floorSpecular, floorPhong);
+            if(hit){
+                /// shoot ray from (row,column) back towards light source
+                Vec3 shadowray;
+                //if obstructed:
+                    //image(row,col) = ambientShading(ambient, ambientlight);
+                //else:
+                image(row,col) = phongShading(ray, normal, lightdir, ambient, ambientlight, diffuse, lightintensity, specular, phongexp);
             }else{
-                image(row,col) = white();       //and here
+                image(row,col) = white();
             }
 
             /// TODO shadow rays (not here probably):
