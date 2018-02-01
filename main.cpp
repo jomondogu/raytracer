@@ -201,6 +201,7 @@ int main(int, char**){
 
             ///hit detection
             bool hit = false;
+            bool sphere = false;
             Vec3 normal,lightdir,ambient,diffuse,specular,intersection;
             float phongexp;
             if(sphere1.intersects(ray,E)){
@@ -212,6 +213,7 @@ int main(int, char**){
                 diffuse = sphere1.diffuse;
                 specular = sphere1.specular;
                 phongexp = sphere1.phongexp;
+                sphere = true;
             }else if(floor.intersects(ray,E)){
                 hit = true;
                 normal = floor.normal;
@@ -229,7 +231,7 @@ int main(int, char**){
                 Vec3 shadowray = lightpos - intersection;
                 shadowray = shadowray.normalized();
                 Vec3 epsilon = shadowray/0.01f;
-                if(sphere1.intersects(shadowray,intersection+epsilon) || floor.intersects(shadowray,intersection+epsilon)){
+                if(!sphere && sphere1.intersects(shadowray,intersection+epsilon)){
                     //image(row,col) = phongShading(ray, normal, lightdir, ambient, ambientlight, diffuse, lightintensity, specular, phongexp);
                     image(row,col) = ambientShading(ambient, ambientlight);
                 }else{
