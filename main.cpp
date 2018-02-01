@@ -73,6 +73,7 @@ public:
     Vec3 intersect;
     Sphere(Vec3 p,Colour a,Colour d,Colour s,float x,float r) : Surface(p,a,d,s,x), radius(r) {}
     bool intersects(Vec3 ray, Vec3 origin){
+
         Vec3 ominusp = origin - pos;
         float disc = std::powf(ray.dot(ominusp),2) - ominusp.dot(ominusp) + radius*radius;
         if(disc >= 0){
@@ -80,6 +81,7 @@ public:
             intersect = origin + distance*ray;
             return true;
         }
+
         return false;
     }
     Vec3 findNormal(){
@@ -100,7 +102,7 @@ public:
     Vec3 findNormal(){
         return vertex1; //TODO: compute triangle normal
     }
-}
+};
 
 ///Returns a ray from a light source to a given position
 Vec3 lightDirection(Vec3 lightpos, Vec3 pos){
@@ -226,7 +228,8 @@ int main(int, char**){
                 /// shoot ray from intersection point back towards light source
                 Vec3 shadowray = lightpos - intersection;
                 shadowray = shadowray.normalized();
-                if(sphere1.intersects(shadowray,intersection) || floor.intersects(shadowray,intersection)){
+                Vec3 epsilon = shadowray/0.01f;
+                if(sphere1.intersects(shadowray,intersection+epsilon) || floor.intersects(shadowray,intersection+epsilon)){
                     //image(row,col) = phongShading(ray, normal, lightdir, ambient, ambientlight, diffuse, lightintensity, specular, phongexp);
                     image(row,col) = ambientShading(ambient, ambientlight);
                 }else{
