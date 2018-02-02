@@ -26,6 +26,21 @@ Colour white() { return Colour(1.0f, 1.0f, 1.0f); }
 Colour grey() { return Colour(0.5f, 0.5f, 0.5f); }
 Colour black() { return Colour(0.0f, 0.0f, 0.0f); }
 
+float epsilon = 0.0001f;
+/*
+///returns area of triangle given by 3 points
+float triangleArea(Vec3 v1, Vec3 v2, Vec3 v3){
+    return 0.5f*(v1(0)*v2(1) + v2(0)*v3(1) + v3(0)*v1(1) - v1(0)*v3(1) - v2(0)*v1(1) - v3(0)*v2(1));
+}
+
+Vec3 findCentroid(Vec3 v1, Vec3 v2, Vec3 v3){
+    float x = (v1(0)+v2(0)+v3(0))/3;
+    float y = (v1(1)+v2(1)+v3(1))/3;
+    float z = (v1(2)+v2(2)+v3(2))/3;
+    return Vec3(x,y,z);
+}
+*/
+
 ///Class Surface used for all objects, members = position, ambient/diffuse/specular lighting coefficients, Phong exponent
 class Surface {
 public:
@@ -47,13 +62,13 @@ public:
     Vec3 intersect;
     Plane(Vec3 p,Colour a,Colour d,Colour s,float x, Vec3 n) : Surface(p,a,d,s,x), normal(n.normalized()) {}
     bool intersects(Vec3 ray, Vec3 origin) {
-        float d = -1.0f;
+        float d;
         float denom = normal.dot(ray);  //denominator of ray-plane intersection equation
-        if(std::abs(denom) > 0.0001f){     //we can't calculate if denom is zero
-            Vec3 pminuso = (pos-origin);         //vector from camera to intersection point
-            d = pminuso.dot(normal)/denom;
+        if(std::abs(denom) > epsilon){     //we can't calculate if denom is zero
+            Vec3 pmo = (pos-origin);         //vector from camera to intersection point
+            d = pmo.dot(normal)/denom;
         }
-        if(d > 0.0001f){
+        if(d > epsilon){
             distance = d;
             intersect = origin + distance*ray;
             return true;
@@ -94,21 +109,45 @@ public:
         return (intersect - pos)/radius;
     }
 };
-
+/*
 ///Class Triangle inherits Surface, members = all Surface members plus 3 triangle vertices
 class Triangle : public Surface {
 public:
     Vec3 vertex1;
     Vec3 vertex2;
     Vec3 vertex3;
-    Triangle(Vec3 p,Colour a,Colour d,Colour s,float x,Vec3 v1,Vec3 v2,Vec3 v3) : Surface(p,a,d,s,x), vertex1(v1), vertex2(v2), vertex3(v3) {}
+    Vec3 normal;
+    float distance;
+    float area;
+    Vec3 intersect;
+    Triangle(Vec3 p,Colour a,Colour d,Colour s,float x,Vec3 v1,Vec3 v2,Vec3 v3) : Surface(p,a,d,s,x), vertex1(v1), vertex2(v2), vertex3(v3), normal((v2-v1).cross(v3-v1)), area(triangleArea(v1,v2,v3)) {}
     bool intersects(Vec3 ray, Vec3 origin){
+        //check if it's in the plane first
+        float d;
+        float denom = normal.dot(ray);  //denominator of ray-plane intersection equation
+        if(std::abs(denom) > epsilon){     //we can't calculate if denom is zero
+            Vec3 pminuso = (pos-origin);         //vector from camera to intersection point
+            d = pminuso.dot(normal)/denom;
+        }
+        if(d > epsilon){
+            //check if it's in the triangle specifically
+            Vec3 point = origin + d*ray;
+            float alpha = triangleArea(vertex2,point,vertex3)/area;
+            float beta = triangleArea(vertex1,point,vertex3)/area;
+            float gamma = triangleArea(vertex1,point,vertex2)/area;
+            if (alpha >= 0 && alpha <= 1 && beta >= 0 && beta <= 1 && gamma >= 0 && gamma <= 1){
+                distance = d;
+                intersect = point;
+                return true;
+            }
+        }
         return false;   //TODO: compute ray-triangle intersection
     }
     Vec3 findNormal(){
-        return vertex1; //TODO: compute triangle normal
+        return normal;
     }
 };
+*/
 
 ///Returns a ray from a light source to a given position
 Vec3 lightDirection(Vec3 lightpos, Vec3 pos){
@@ -173,8 +212,6 @@ int main(int, char**){
     ///Ambient light intensity:
     float ambientlight = 0.5f;
 
-    std::vector<std::unique_ptr<Surface>> surfaces;
-
     ///floor position & material definition:
     Vec3 floorp = Vec3(0.0f,-5.0f,0.0f);
     Colour floora = purple();
@@ -184,7 +221,6 @@ int main(int, char**){
     Vec3 floorn = Vec3(0.0f,1.0f,0.0f);
     ///floor construction:
     Plane floor(floorp,floora,floord,floors,floorx,floorn);
-    surfaces.push_back(floor);
 
     ///sphere1 position & material definition:
     Vec3 sphere1p = Vec3(0.0f, 0.0f, -5.0f);
@@ -195,7 +231,19 @@ int main(int, char**){
     float sphere1r = 1.0f;
     ///sphere1 construction:
     Sphere sphere1(sphere1p,sphere1a,sphere1d,sphere1s,sphere1x,sphere1r);
-    surfaces.push_back(sphere1);
+
+    /*
+    ///triangle1 position & material definition:
+    Vec3 tri1v1 = Vec3(2.0f, 2.0f, -1.0f);
+    Vec3 tri1v2 = Vec3(2.0f, 0.0f, -1.0f);
+    Vec3 tri1v3 = Vec3(0.0f, 0.0f, 0.0f);
+    Colour tri1a = black();
+    Colour tri1d = grey();
+    Colour tri1s = white();
+    float tri1x = 10.0f;
+    ///tri1 construction:
+    Triangle tri1(findCentroid(tri1v1,tri1v2,tri1v3),tri1a,tri1d,tri1s,tri1x,tri1v1,tri1v2,tri1v3);
+    */
 
     ///For each row, compute rays, intersections, & shading
     for (int row = 0; row < image.rows(); ++row) {
@@ -214,8 +262,6 @@ int main(int, char**){
             Vec3 normal,lightdir,ambient,diffuse,specular,intersection;
             float phongexp;
 
-
-
             if(sphere1.intersects(ray,E)){
                 hit = true;
                 normal = sphere1.findNormal();
@@ -225,7 +271,16 @@ int main(int, char**){
                 diffuse = sphere1.diffuse;
                 specular = sphere1.specular;
                 phongexp = sphere1.phongexp;
-            }else if(floor.intersects(ray,E)){
+            }/*else if(tri1.intersects(ray,E)){
+                hit = true;
+                normal = tri1.findNormal();
+                intersection = tri1.intersect;
+                lightdir = lightDirection(lightpos,intersection);
+                ambient = tri1.ambient;
+                diffuse = tri1.diffuse;
+                specular = tri1.specular;
+                phongexp = tri1.phongexp;
+            }*/else if(floor.intersects(ray,E)){
                 hit = true;
                 normal = floor.findNormal();
                 intersection = floor.intersect;
@@ -236,15 +291,14 @@ int main(int, char**){
                 phongexp = floor.phongexp;
             }
 
-
             ///compute shading (ambient only or Phong)
             if(hit){
                 /// shoot ray from intersection point back towards light source
                 Vec3 shadowray = lightpos - intersection;
                 shadowray = shadowray.normalized();
-                Vec3 epsilon = shadowray*0.0001f;
+                Vec3 epsvec = shadowray*epsilon;
                 ///check shadow ray intersection
-                if(sphere1.intersects(shadowray,intersection+epsilon) || floor.intersects(shadowray,intersection+epsilon)){
+                if(sphere1.intersects(shadowray,intersection+epsvec) || floor.intersects(shadowray,intersection+epsvec)){
                     image(row,col) = ambientShading(ambient, ambientlight);
                 }else{
                     image(row,col) = phongShading(ray, normal, lightdir, ambient, ambientlight, diffuse, lightintensity, specular, phongexp);
