@@ -73,20 +73,20 @@ public:
     Vec3 intersect;
     Sphere(Vec3 p,Colour a,Colour d,Colour s,float x,float r) : Surface(p,a,d,s,x), radius(r) {}
     bool intersects(Vec3 ray, Vec3 origin){
-        Vec3 L = pos - origin;  //fix these names
-        float tca = L.dot(ray);
-        float d2 = L.dot(L) - tca*tca;
-        if (d2 > radius*radius) return false;
-        float thc = std::sqrtf(radius*radius - d2);
-        float t0 = tca - thc;
-        float t1 = tca + thc;
-        if(t0 > t1) std::swap(t0,t1);
-        if(t0 < 0){
-            t0 = t1;
-            if(t0 < 0) return false;
+        Vec3 pmo = pos - origin;  //fix these names
+        float tca = pmo.dot(ray);
+        float disc = pmo.dot(pmo) - tca*tca;
+        if (disc > radius*radius) return false;
+        float thc = std::sqrtf(radius*radius - disc);
+        float d0 = tca - thc;
+        float d1 = tca + thc;
+        if(d0 > d1) std::swap(d0,d1);
+        if(d0 < 0){
+            d0 = d1;
+            if(d0 < 0) return false;
         }
 
-        distance = t0;
+        distance = d0;
         intersect = origin + distance*ray;
         return true;
     }
@@ -173,6 +173,8 @@ int main(int, char**){
     ///Ambient light intensity:
     float ambientlight = 0.5f;
 
+    std::vector<std::unique_ptr<Surface>> surfaces;
+
     ///floor position & material definition:
     Vec3 floorp = Vec3(0.0f,-5.0f,0.0f);
     Colour floora = purple();
@@ -182,6 +184,7 @@ int main(int, char**){
     Vec3 floorn = Vec3(0.0f,1.0f,0.0f);
     ///floor construction:
     Plane floor(floorp,floora,floord,floors,floorx,floorn);
+    surfaces.push_back(floor);
 
     ///sphere1 position & material definition:
     Vec3 sphere1p = Vec3(0.0f, 0.0f, -5.0f);
@@ -192,6 +195,7 @@ int main(int, char**){
     float sphere1r = 1.0f;
     ///sphere1 construction:
     Sphere sphere1(sphere1p,sphere1a,sphere1d,sphere1s,sphere1x,sphere1r);
+    surfaces.push_back(sphere1);
 
     ///For each row, compute rays, intersections, & shading
     for (int row = 0; row < image.rows(); ++row) {
@@ -209,6 +213,9 @@ int main(int, char**){
             bool hit = false;
             Vec3 normal,lightdir,ambient,diffuse,specular,intersection;
             float phongexp;
+
+
+
             if(sphere1.intersects(ray,E)){
                 hit = true;
                 normal = sphere1.findNormal();
@@ -222,19 +229,21 @@ int main(int, char**){
                 hit = true;
                 normal = floor.findNormal();
                 intersection = floor.intersect;
-                lightdir = lightDirection(lightpos,intersection);   //TODO: this is backwards for some reason (floor.intersect is negative?)
+                lightdir = lightDirection(lightpos,intersection);
                 ambient = floor.ambient;
                 diffuse = floor.diffuse;
                 specular = floor.specular;
                 phongexp = floor.phongexp;
             }
 
+
             ///compute shading (ambient only or Phong)
             if(hit){
                 /// shoot ray from intersection point back towards light source
-                Vec3 shadowray = intersection - lightpos;
+                Vec3 shadowray = lightpos - intersection;
                 shadowray = shadowray.normalized();
-                Vec3 epsilon = shadowray/0.01f;
+                Vec3 epsilon = shadowray*0.0001f;
+                ///check shadow ray intersection
                 if(sphere1.intersects(shadowray,intersection+epsilon) || floor.intersects(shadowray,intersection+epsilon)){
                     image(row,col) = ambientShading(ambient, ambientlight);
                 }else{
